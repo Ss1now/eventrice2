@@ -1,0 +1,30 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+html, body {
+  height: 100%;
+}
+
+body {
+  @apply bg-white text-zinc-900 antialiased;
+}
+
+::selection {
+  @apply bg-zinc-900 text-white;
+}
+
+/* Tiny, friendly Duolingo-ish motion */
+@media (prefers-reduced-motion: no-preference) {
+  .wiggle {
+    animation: wiggle 1.8s ease-in-out infinite;
+  }
+  @keyframes wiggle {
+    0%, 100% { transform: rotate(-1deg) translateY(0px); }
+    50% { transform: rotate(1deg) translateY(-2px); }
+  }
+}
