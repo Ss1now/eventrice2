@@ -7,7 +7,7 @@ import { CalendarDays, MessageCircle, Trophy, User, Sparkles } from "lucide-reac
 import { Badge } from "@/components/ui/Badge";
 import { useStore } from "@/lib/store";
 
-const nav = [
+const nav: Array<{ href: string; label: string; icon: React.ComponentType<{ className?: string }> }> = [
   { href: "/events", label: "Events", icon: CalendarDays },
   { href: "/connections", label: "Connections", icon: MessageCircle },
   { href: "/rankings", label: "Rankings", icon: Trophy },
@@ -39,7 +39,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               return (
                 <Link
                   key={n.href}
-                  href={n.href}
+                  href={n.href as any}
                   className={cn(
                     "inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm transition",
                     active ? "bg-zinc-900 text-white" : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
@@ -79,7 +79,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             return (
               <Link
                 key={n.href}
-                href={n.href}
+                href={n.href as any}
                 className={cn(
                   "flex flex-col items-center justify-center gap-1 rounded-2xl py-2 text-xs transition",
                   active ? "bg-zinc-900 text-white" : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
