@@ -1,17 +1,28 @@
 "use client";
 
+import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardDesc, CardTitle } from "@/components/ui/Card";
 import { deriveReservedLabel } from "@/lib/demoData";
 import type { Host, PartyEvent } from "@/lib/types";
 import { formatDateTime } from "@/lib/utils";
-import { MapPin, Clock, Users, ShieldCheck } from "lucide-react";
+import { MapPin, Clock, Users, ShieldCheck, Heart } from "lucide-react";
 import { useStore } from "@/lib/store";
+import { useAuth } from "@/lib/useAuth";
+import { runAuthedAction } from "@/lib/actionGuards";
+import { toggleLike, fetchLikeCount, fetchUserLiked } from "@/lib/likes";
 
 export function EventCard({ event, host, variant }: { event: PartyEvent; host: Host; variant: "past" | "ongoing" | "future" }) {
   const { reserveEvent, user } = useStore();
+  const { user: sbUser } = useAuth();
+  const router = useRouter();
+  const [liked, setLiked] = React.useState(false);
+  const [likeCount, setLikeCount] = React.useState(0);
+  const [liking, setLiking] = React.useState(false);
+  const [likeErr, setLikeErr] = React.useState<string | null>(null);
   const start = new Date(event.startAt);
   const end = new Date(event.endAt);
 
@@ -85,6 +96,26 @@ export function EventCard({ event, host, variant }: { event: PartyEvent; host: H
               Reserve
             </Button>
           )}
+          <Button
+            onClick={async () => {
+              await runAuthedAction(
+                { user: sbUser, redirectToLogin: () => router.push("/login"), setLoading: setLiking, setError: setLikeErr },
+                async (u) => {
+                  const out = await toggleLike(event.id, u.id);
+                  setLiked(out.liked);
+                  const c = await fetchLikeCount(event.id);
+                  setLikeCount(c);
+                  return out;
+                }
+              );
+            }}
+            disabled={liking}
+            variant={liked ? "solid" : undefined}
+          >
+            <Heart className="h-4 w-4" />
+            <span className="ml-2 text-xs">{liked ? `Liked (${likeCount})` : `Like (${likeCount})`}</span>
+          </Button>
+
           <Link href={`/events/${event.id}`}>
             <Button variant="outline">View</Button>
           </Link>

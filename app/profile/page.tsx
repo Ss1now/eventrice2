@@ -13,10 +13,23 @@ import { Stars } from "@/components/ui/Stars";
 import { useStore } from "@/lib/store";
 import { splitEventsByTime } from "@/lib/demoData";
 import { useAuth } from "@/lib/useAuth";
+import { fetchMyProfile, upsertMyProfile } from "@/lib/profiles";
+
 
 export default function ProfilePage() {
   const router = useRouter();
   const { user: sbUser, loading } = useAuth();
+
+  const [saving, setSaving] = React.useState(false);
+  const [loadingProfile, setLoadingProfile] = React.useState(true);
+  const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
+
+  // Supabase-backed fields
+  const [name, setName] = React.useState("");
+  const [instagram, setInstagram] = React.useState("");
+  const [phone, setPhone] = React.useState("");
+  const [college, setCollege] = React.useState("Rice University");
+  const [verified, setVerified] = React.useState(false);
 
   // ✅ Step 8: protect route
   React.useEffect(() => {
@@ -30,21 +43,79 @@ export default function ProfilePage() {
   if (!sbUser) return null;
 
   // --- Your existing store-based UI (kept for now) ---
-  const { user, setUser, events, hosts, verifyUser } = useStore();
+  const { user, setUser, events, hosts } = useStore();
 
-  // Safety: if your store "user" exists but isn't tied to Supabase yet,
-  // we still let the page render (Step 9 will connect them).
   const hosted = events.filter((e) => e.hostId === user.id);
   const attended = events.filter((e) => e.ratings.some((r) => r.userId === user.id));
   const { past, ongoing, future } = splitEventsByTime(hosted);
 
-  const [name, setName] = React.useState(user.name);
-  const [instagram, setInstagram] = React.useState(user.instagram ?? "");
-  const [phone, setPhone] = React.useState(user.phone ?? "");
+  // Step 9: load profile from Supabase
+  React.useEffect(() => {
+    if (!sbUser) return;
+    (async () => {
+      try {
+        setLoadingProfile(true);
+        setErrorMsg(null);
 
-  function save() {
-    setUser({ ...user, name, instagram: instagram || undefined, phone: phone || undefined });
+        const p = await fetchMyProfile(sbUser.id);
+
+        setName(p?.full_name ?? (sbUser.email?.split("@")[0] ?? ""));
+        setInstagram(p?.instagram ?? "");
+        setPhone(p?.phone ?? "");
+        setCollege(p?.college ?? "Rice University");
+        setVerified(p?.verified ?? false);
+
+        // Keep store in sync (optional, helps other pages still using demo store)
+        setUser((prev) => ({
+          ...prev,
+          name: p?.full_name ?? prev.name,
+          instagram: p?.instagram ?? prev.instagram,
+          phone: p?.phone ?? prev.phone,
+          verified: p?.verified ?? prev.verified,
+          college: (p?.college ?? prev.college) as any,
+        }));
+      } catch (e: any) {
+        setErrorMsg(e?.message ?? "Failed to load profile");
+      } finally {
+        setLoadingProfile(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sbUser]);
+
+  async function save() {
+    try {
+      setSaving(true);
+      setErrorMsg(null);
+
+      if (!sbUser) throw new Error("no auth user");
+
+      const saved = await upsertMyProfile({
+        userId: sbUser.id,
+        full_name: name.trim() || null,
+        instagram: instagram.trim() || null,
+        phone: phone.trim() || null,
+        college: college || "Rice University",
+        verified,
+      });
+
+      // Keep store in sync (optional)
+      setUser((prev) => ({
+        ...prev,
+        name: saved.full_name ?? prev.name,
+        instagram: saved.instagram ?? prev.instagram,
+        phone: saved.phone ?? prev.phone,
+        verified: saved.verified ?? prev.verified,
+        college: (saved.college ?? prev.college) as any,
+      }));
+    } catch (e: any) {
+      setErrorMsg(e?.message ?? "Failed to save");
+    } finally {
+      setSaving(false);
+    }
   }
+
+  if (loadingProfile) return null;
 
   return (
     <div className="grid gap-6">
@@ -60,9 +131,17 @@ export default function ProfilePage() {
           <Link href={"/login" as any}>
             <Button variant="outline">Account</Button>
           </Link>
-          <Button onClick={save}>Save</Button>
+          <Button onClick={save} disabled={saving}>
+            {saving ? "Saving..." : "Save"}
+          </Button>
         </div>
       </div>
+
+      {errorMsg ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {errorMsg}
+        </div>
+      ) : null}
 
       <div className="grid gap-4 sm:grid-cols-3">
         <Card className="sm:col-span-2">
@@ -76,12 +155,16 @@ export default function ProfilePage() {
             <div className="grid gap-2">
               <div className="text-xs text-zinc-500">College</div>
               <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700">
-                {user.college}
+                {college}
               </div>
             </div>
             <div className="grid gap-2">
               <div className="text-xs text-zinc-500">Instagram</div>
-              <Input value={instagram} onChange={(e) => setInstagram(e.target.value)} placeholder="@yourhandle" />
+              <Input
+                value={instagram}
+                onChange={(e) => setInstagram(e.target.value)}
+                placeholder="@yourhandle"
+              />
             </div>
             <div className="grid gap-2">
               <div className="text-xs text-zinc-500">Phone</div>
@@ -90,7 +173,7 @@ export default function ProfilePage() {
           </div>
 
           <div className="mt-5 flex flex-wrap items-center gap-2">
-            {user.verified ? (
+            {verified ? (
               <Badge className="bg-emerald-50 text-emerald-700">Rice Verified</Badge>
             ) : (
               <Badge className="bg-amber-50 text-amber-700">Not verified</Badge>
@@ -99,10 +182,10 @@ export default function ProfilePage() {
           </div>
 
           <div className="mt-4 flex gap-2">
-            <Button variant={user.verified ? "outline" : "primary"} onClick={() => verifyUser(true)}>
+            <Button variant={verified ? "outline" : "primary"} onClick={() => setVerified(true)}>
               Verify with Rice email (demo)
             </Button>
-            <Button variant="outline" onClick={() => verifyUser(false)}>
+            <Button variant="outline" onClick={() => setVerified(false)}>
               Remove verification
             </Button>
           </div>

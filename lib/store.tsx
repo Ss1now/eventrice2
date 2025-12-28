@@ -12,7 +12,7 @@ type AppState = {
   events: PartyEvent[];
   connections: ConnectionPost[];
   dms: DMThread[];
-  setUser: (u: User) => void;
+  setUser: React.Dispatch<React.SetStateAction<User>>;
   addEvent: (e: PartyEvent) => void;
   reserveEvent: (eventId: string) => void;
   addRating: (eventId: string, rating: PartyEvent["ratings"][number]) => void;
