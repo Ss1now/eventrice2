@@ -62,7 +62,9 @@ export default function EventDetailPage() {
       comment: comment.trim() || undefined,
       createdAt: new Date().toISOString()
     };
-    addRating(event.id, rating);
+    if (event) {
+      addRating(event.id, rating);
+    }
     setComment("");
   }
 
