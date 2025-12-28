@@ -8,13 +8,50 @@ import { CreateEventModal } from "@/components/events/CreateEventModal";
 import { EventCard } from "@/components/events/EventCard";
 import { splitEventsByTime } from "@/lib/demoData";
 import { useStore } from "@/lib/store";
+import { useEffect } from "react";
+import { fetchEvents } from "@/lib/events";
+import { supabase } from "@/lib/supabaseClient";
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 
 type Tab = "future" | "ongoing" | "past";
 
 export default function EventsPage() {
-  const { events, hosts } = useStore();
+  const { events, hosts, setEvents } = useStore();
+  useEffect(() => {
+    (async () => {
+      try {
+        const list = await fetchEvents();
+        setEvents(list);
+      } catch (e) {
+        console.error("Failed to fetch events", e);
+      }
+    })();
+  }, [setEvents]);
+
+  // Real-time updates: refresh events list when the events table changes
+  React.useEffect(() => {
+    const channel = supabase
+      .channel("events-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "events" },
+        async () => {
+          try {
+            const list = await fetchEvents();
+            setEvents(list);
+          } catch (e) {
+            console.error("Failed to refresh events from realtime", e);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      // removeChannel is synchronous in supabase-js v2
+      supabase.removeChannel(channel);
+    };
+  }, [setEvents]);
   const [tab, setTab] = React.useState<Tab>("future");
   const [open, setOpen] = React.useState(false);
   const [q, setQ] = React.useState("");

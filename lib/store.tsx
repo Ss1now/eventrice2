@@ -1,8 +1,11 @@
 "use client";
 
-import React, { createContext, useContext, useMemo, useState } from "react";
+import React, { createContext, useContext, useMemo, useState, useEffect } from "react";
 import type { ConnectionPost, DMThread, Host, PartyEvent } from "@/lib/types";
 import { demoConnections, demoDMs, demoEvents, demoHosts, deriveHostsWithScores } from "@/lib/demoData";
+import { fetchEvents } from "@/lib/events";
+import { fetchAllProfiles, fetchMyProfile } from "@/lib/profiles";
+import { useAuth } from "@/lib/useAuth";
 
 type User = Host;
 
@@ -13,6 +16,7 @@ type AppState = {
   connections: ConnectionPost[];
   dms: DMThread[];
   setUser: React.Dispatch<React.SetStateAction<User>>;
+  setEvents: React.Dispatch<React.SetStateAction<PartyEvent[]>>;
   addEvent: (e: PartyEvent) => void;
   reserveEvent: (eventId: string) => void;
   addRating: (eventId: string, rating: PartyEvent["ratings"][number]) => void;
@@ -25,14 +29,62 @@ type AppState = {
 const StoreCtx = createContext<AppState | null>(null);
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
-  const [events, setEvents] = useState<PartyEvent[]>(demoEvents);
-  const [connections, setConnections] = useState<ConnectionPost[]>(demoConnections);
-  const [dms, setDMs] = useState<DMThread[]>(demoDMs);
+  const demoMode = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 
-  // pick a default "logged-in" user for demo
-  const [user, setUser] = useState<User>({ ...demoHosts[0], verified: true });
+  const [events, setEvents] = useState<PartyEvent[]>(demoMode ? demoEvents : []);
+  const [connections, setConnections] = useState<ConnectionPost[]>(demoMode ? demoConnections : []);
+  const [dms, setDMs] = useState<DMThread[]>(demoMode ? demoDMs : []);
 
-  const hosts = useMemo(() => deriveHostsWithScores(events, demoHosts), [events]);
+  // pick a default "logged-in" user for demo; in production we map Supabase auth to a Host
+  const [user, setUser] = useState<User>(demoMode ? { ...demoHosts[0], verified: true } : { id: "guest", name: "Guest", college: "Will Rice", verified: false, hostScore: 0 });
+
+  const [hosts, setHosts] = useState<Host[]>(demoMode ? deriveHostsWithScores(demoEvents, demoHosts) : []);
+
+  const { user: sbUser, loading: authLoading } = useAuth();
+
+  // In non-demo mode, fetch events + profiles on mount and when auth changes
+  useEffect(() => {
+    if (demoMode) return;
+
+    (async () => {
+      try {
+        const ev = await fetchEvents();
+        setEvents(ev);
+        const profiles = await fetchAllProfiles();
+        const mappedHosts: Host[] = profiles.map((p) => ({
+          id: p.id,
+          name: p.full_name ?? p.id,
+          college: (p.college ?? "Will Rice") as any,
+          avatar: undefined,
+          instagram: p.instagram ?? undefined,
+          phone: p.phone ?? undefined,
+          verified: !!p.verified,
+          hostScore: 0
+        }));
+        // compute host scores
+        setHosts(deriveHostsWithScores(ev, mappedHosts));
+      } catch (e) {
+        console.error("Failed to load events/hosts", e);
+      }
+    })();
+  }, [demoMode]);
+
+  // Sync authenticated user to store user when available
+  useEffect(() => {
+    if (demoMode) return;
+    (async () => {
+      if (!sbUser) {
+        setUser({ id: "guest", name: "Guest", college: "Will Rice", verified: false, hostScore: 0 });
+        return;
+      }
+      try {
+        const p = await fetchMyProfile(sbUser.id);
+        setUser({ id: sbUser.id, name: p?.full_name ?? sbUser.email ?? sbUser.id, college: (p?.college ?? "Will Rice") as any, instagram: p?.instagram ?? undefined, verified: !!p?.verified, hostScore: 0 });
+      } catch (e) {
+        console.error("Failed to fetch profile for auth user", e);
+      }
+    })();
+  }, [sbUser, demoMode]);
 
   const addEvent: AppState["addEvent"] = (e) => {
     setEvents((prev) => [e, ...prev]);
@@ -99,6 +151,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     connections,
     dms,
     setUser,
+    setEvents,
     addEvent,
     reserveEvent,
     addRating,

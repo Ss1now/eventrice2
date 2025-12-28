@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { Card, CardDesc, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -12,18 +12,54 @@ import { Textarea } from "@/components/ui/Textarea";
 import { computeEventScore, splitEventsByTime } from "@/lib/demoData";
 import { formatDateTime } from "@/lib/utils";
 import { useStore } from "@/lib/store";
-import { MapPin, Clock, Users, ShieldCheck, ArrowLeft } from "lucide-react";
+import { MapPin, Clock, Users, ShieldCheck, ArrowLeft, Heart } from "lucide-react";
+import { fetchEventById, toggleLike, fetchLikeCount, fetchUserLiked } from "@/lib/events";
+import type { PartyEvent } from "@/lib/types";
+import { useAuth } from "@/lib/useAuth";
+import { runAuthedAction } from "@/lib/actionGuards";
 
 export default function EventDetailPage() {
   const params = useParams<{ id: string }>();
-  const { events, hosts, user, reserveEvent, addRating } = useStore();
-  const event = events.find((e) => e.id === params.id);
+  const router = useRouter();
+  const { hosts, user, reserveEvent, addRating } = useStore();
+  const { user: sbUser } = useAuth();
+
+  const [event, setEvent] = React.useState<PartyEvent | null>(null);
+  const [loading, setLoading] = React.useState(true);
 
   const [stars, setStars] = React.useState(5);
   const [vibe, setVibe] = React.useState(5);
   const [safety, setSafety] = React.useState(5);
   const [comment, setComment] = React.useState("");
 
+  const [liked, setLiked] = React.useState(false);
+  const [likeCount, setLikeCount] = React.useState(0);
+  const [liking, setLiking] = React.useState(false);
+  const [likeErr, setLikeErr] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!params?.id) return;
+    (async () => {
+      setLoading(true);
+      try {
+        const e = await fetchEventById(params.id);
+        setEvent(e);
+        const c = await fetchLikeCount(params.id);
+        setLikeCount(c);
+        if (sbUser) {
+          const l = await fetchUserLiked(params.id, sbUser.id);
+          setLiked(l);
+        }
+      } catch (err) {
+        console.error(err);
+        setEvent(null);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [params?.id, sbUser]);
+
+  if (loading) return null;
   if (!event) {
     return (
       <Card>
@@ -79,6 +115,27 @@ export default function EventDetailPage() {
           <Badge className="bg-zinc-900 text-white">{status === "ongoing" ? "LIVE" : status.toUpperCase()}</Badge>
           <Badge>{host.college}</Badge>
           {event.theme && <Badge>Theme: {event.theme}</Badge>}
+          {sbUser ? (
+            <Button
+              onClick={async () => {
+                await runAuthedAction(
+                  { user: sbUser, redirectToLogin: () => router.push("/login" as any), setLoading: setLiking, setError: setLikeErr },
+                  async (u) => {
+                    const out = await toggleLike(event.id, u.id);
+                    const c = await fetchLikeCount(event.id);
+                    setLikeCount(c);
+                    setLiked(out.liked);
+                    return out;
+                  }
+                );
+              }}
+              disabled={liking}
+              variant={liked ? "primary" : "outline"}
+            >
+              <Heart className="h-4 w-4" />
+              <span className="ml-2 text-xs">{liked ? `Liked (${likeCount})` : `Like (${likeCount})`}</span>
+            </Button>
+          ) : null}
         </div>
       </div>
 

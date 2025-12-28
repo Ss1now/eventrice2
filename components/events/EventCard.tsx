@@ -14,6 +14,7 @@ import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/useAuth";
 import { runAuthedAction } from "@/lib/actionGuards";
 import { toggleLike, fetchLikeCount, fetchUserLiked } from "@/lib/likes";
+import { supabase } from "@/lib/supabaseClient";
 
 export function EventCard({ event, host, variant }: { event: PartyEvent; host: Host; variant: "past" | "ongoing" | "future" }) {
   const { reserveEvent, user } = useStore();
@@ -25,6 +26,47 @@ export function EventCard({ event, host, variant }: { event: PartyEvent; host: H
   const [likeErr, setLikeErr] = React.useState<string | null>(null);
   const start = new Date(event.startAt);
   const end = new Date(event.endAt);
+
+  React.useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const c = await fetchLikeCount(event.id);
+        if (mounted) setLikeCount(c);
+        if (sbUser) {
+          const l = await fetchUserLiked(event.id, sbUser.id);
+          if (mounted) setLiked(l);
+        }
+      } catch (err) {
+        console.error("Failed to load likes", err);
+      }
+    })();
+
+    const channel = supabase
+      .channel(`likes-event-${event.id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "event_likes", filter: `event_id=eq.${event.id}` },
+        async () => {
+          try {
+            const c = await fetchLikeCount(event.id);
+            setLikeCount(c);
+            if (sbUser) {
+              const l = await fetchUserLiked(event.id, sbUser.id);
+              setLiked(l);
+            }
+          } catch (err) {
+            console.error("Failed to refresh likes", err);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      mounted = false;
+      supabase.removeChannel(channel);
+    };
+  }, [event.id, sbUser]);
 
   const reservedLabel = deriveReservedLabel(event.reservationMode, event.reservedCount, event.capacity);
 
@@ -99,18 +141,18 @@ export function EventCard({ event, host, variant }: { event: PartyEvent; host: H
           <Button
             onClick={async () => {
               await runAuthedAction(
-                { user: sbUser, redirectToLogin: () => router.push("/login"), setLoading: setLiking, setError: setLikeErr },
+                { user: sbUser, redirectToLogin: () => router.push("/login" as any), setLoading: setLiking, setError: setLikeErr },
                 async (u) => {
                   const out = await toggleLike(event.id, u.id);
-                  setLiked(out.liked);
                   const c = await fetchLikeCount(event.id);
                   setLikeCount(c);
+                  setLiked(out.liked);
                   return out;
                 }
               );
             }}
             disabled={liking}
-            variant={liked ? "solid" : undefined}
+            variant={liked ? "primary" : "outline"}
           >
             <Heart className="h-4 w-4" />
             <span className="ml-2 text-xs">{liked ? `Liked (${likeCount})` : `Like (${likeCount})`}</span>

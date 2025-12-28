@@ -36,6 +36,7 @@ declare namespace __next_route_internal_types__ {
     | `/auth`
     | `/connections`
     | `/events`
+    | `/login`
     | `/profile`
     | `/rankings`
   type DynamicRoutes<T extends string = string> = 

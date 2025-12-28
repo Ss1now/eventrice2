@@ -54,3 +54,9 @@ export async function upsertMyProfile(input: {
   if (error) throw error;
   return data;
 }
+
+export async function fetchAllProfiles(): Promise<Profile[]> {
+  const { data, error } = await supabase.from<Profile>("profiles").select("id, full_name, instagram, phone, college, verified");
+  if (error) throw error;
+  return data ?? [];
+}
