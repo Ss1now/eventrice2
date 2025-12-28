@@ -8,11 +8,14 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import type { PartyEvent, ReservationMode, ServiceNeed } from "@/lib/types";
 import { useStore } from "@/lib/store";
+import { createEvent, fetchEvents } from "@/lib/events";
+import { useAuth } from "@/lib/useAuth";
 
 const services: ServiceNeed[] = ["DJ","Photographer","Bartender","Door/Check-in","Cleanup","Security","Caregiver/Designated Driver"];
 
 export function CreateEventModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { addEvent, user } = useStore();
+  const { user: storeUser, setEvents } = useStore();
+  const { user: sbUser } = useAuth();
   const [title, setTitle] = React.useState("");
   const [description, setDescription] = React.useState("");
   const [location, setLocation] = React.useState("");
@@ -24,6 +27,8 @@ export function CreateEventModal({ open, onClose }: { open: boolean; onClose: ()
   const [capacity, setCapacity] = React.useState<number | "">("");
   const [whatToBring, setWhatToBring] = React.useState("ID, water, jacket");
   const [servicesHiring, setServicesHiring] = React.useState<ServiceNeed[]>([]);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
 
   function toggleService(s: ServiceNeed) {
     setServicesHiring((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
@@ -41,36 +46,50 @@ export function CreateEventModal({ open, onClose }: { open: boolean; onClose: ()
     setCapacity("");
     setWhatToBring("ID, water, jacket");
     setServicesHiring([]);
+    setError(null);
   }
 
-  function submit() {
+  async function submit() {
     if (!title || !location || !startAt || !endAt) return;
+    if (!sbUser?.id) {
+      setError("You must be logged in to post an event");
+      return;
+    }
 
-    const e: PartyEvent = {
-      id: `e_${Date.now()}`,
-      title,
-      description,
-      location,
-      startAt: new Date(startAt).toISOString(),
-      endAt: new Date(endAt).toISOString(),
-      dressCode: dressCode || undefined,
-      theme: theme || undefined,
-      whatToBring: whatToBring
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
-      servicesHiring: servicesHiring.length ? servicesHiring : undefined,
-      reservationMode: mode,
-      capacity: mode === "Reservation Required" ? (capacity === "" ? undefined : Number(capacity)) : undefined,
-      reservedCount: 0,
-      hostId: user.id,
-      createdAt: new Date().toISOString(),
-      ratings: []
-    };
+    setLoading(true);
+    setError(null);
 
-    addEvent(e);
-    reset();
-    onClose();
+    try {
+      await createEvent(
+        {
+          title,
+          description: description || undefined,
+          locationName: location,
+          address: undefined,
+          startAt: new Date(startAt).toISOString(),
+          endAt: new Date(endAt).toISOString(),
+          dressCode: dressCode || undefined,
+          theme: theme || undefined,
+          capacity: mode === "Reservation Required" ? (capacity === "" ? undefined : Number(capacity)) : undefined,
+          isPublic: mode === "Open",
+          is18plus: false
+        },
+        sbUser.id,
+        sbUser.email ?? "Unknown"
+      );
+
+      // Refresh events list
+      const updated = await fetchEvents();
+      setEvents(updated);
+
+      reset();
+      onClose();
+    } catch (err: any) {
+      console.error("Failed to create event:", err);
+      setError(err?.message ?? "Failed to create event");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -165,13 +184,15 @@ export function CreateEventModal({ open, onClose }: { open: boolean; onClose: ()
         </div>
 
         <div className="flex justify-end gap-2 pt-2">
-          <Button variant="ghost" onClick={onClose} type="button">
+          <Button variant="ghost" onClick={onClose} type="button" disabled={loading}>
             Cancel
           </Button>
-          <Button onClick={submit} type="button" disabled={!title || !location || !startAt || !endAt}>
-            Post
+          <Button onClick={submit} type="button" disabled={!title || !location || !startAt || !endAt || loading}>
+            {loading ? "Posting..." : "Post"}
           </Button>
         </div>
+
+        {error && <div className="text-xs text-red-600">{error}</div>}
 
         <div className="text-xs text-zinc-500">
           Rule: you can only post future events (enforced by backend later). In demo mode we trust you 🙂
