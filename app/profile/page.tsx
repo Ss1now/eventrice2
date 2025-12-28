@@ -2,17 +2,38 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
-import { useStore } from "@/lib/store";
-import { splitEventsByTime } from "@/lib/demoData";
 import { Stars } from "@/components/ui/Stars";
 
+import { useStore } from "@/lib/store";
+import { splitEventsByTime } from "@/lib/demoData";
+import { useAuth } from "@/lib/useAuth";
+
 export default function ProfilePage() {
+  const router = useRouter();
+  const { user: sbUser, loading } = useAuth();
+
+  // ✅ Step 8: protect route
+  React.useEffect(() => {
+    if (!loading && !sbUser) {
+      router.push("/login" as any);
+    }
+  }, [loading, sbUser, router]);
+
+  // While checking session, render nothing (or a spinner)
+  if (loading) return null;
+  if (!sbUser) return null;
+
+  // --- Your existing store-based UI (kept for now) ---
   const { user, setUser, events, hosts, verifyUser } = useStore();
 
+  // Safety: if your store "user" exists but isn't tied to Supabase yet,
+  // we still let the page render (Step 9 will connect them).
   const hosted = events.filter((e) => e.hostId === user.id);
   const attended = events.filter((e) => e.ratings.some((r) => r.userId === user.id));
   const { past, ongoing, future } = splitEventsByTime(hosted);
@@ -31,10 +52,13 @@ export default function ProfilePage() {
         <div>
           <div className="text-2xl font-semibold tracking-tight">Profile</div>
           <div className="mt-1 text-sm text-zinc-600">Make it clean. Make it you.</div>
+          <div className="mt-2 text-xs text-zinc-500">
+            Signed in as: <span className="font-medium">{sbUser.email}</span>
+          </div>
         </div>
         <div className="flex items-center gap-2">
-          <Link href="/auth">
-            <Button variant="outline">Auth</Button>
+          <Link href={"/login" as any}>
+            <Button variant="outline">Account</Button>
           </Link>
           <Button onClick={save}>Save</Button>
         </div>
@@ -71,9 +95,7 @@ export default function ProfilePage() {
             ) : (
               <Badge className="bg-amber-50 text-amber-700">Not verified</Badge>
             )}
-            <div className="text-sm text-zinc-600">
-              Verified users can reserve Rice-only events.
-            </div>
+            <div className="text-sm text-zinc-600">Verified users can reserve Rice-only events.</div>
           </div>
 
           <div className="mt-4 flex gap-2">
@@ -91,7 +113,9 @@ export default function ProfilePage() {
           <div className="mt-4 grid gap-3 text-sm text-zinc-700">
             <div className="flex items-center justify-between">
               <span>Host score</span>
-              <span className="font-semibold">{Math.round(hosts.find(h => h.id === user.id)?.hostScore ?? user.hostScore)}</span>
+              <span className="font-semibold">
+                {Math.round(hosts.find((h) => h.id === user.id)?.hostScore ?? user.hostScore)}
+              </span>
             </div>
             <div className="flex items-center justify-between">
               <span>Hosted</span>
@@ -118,7 +142,9 @@ export default function ProfilePage() {
               hosted.slice(0, 6).map((e) => (
                 <div key={e.id} className="rounded-2xl border border-zinc-200 p-4">
                   <div className="text-sm font-semibold">{e.title}</div>
-                  <div className="mt-1 text-xs text-zinc-500">{new Date(e.startAt).toLocaleString()} · {e.location}</div>
+                  <div className="mt-1 text-xs text-zinc-500">
+                    {new Date(e.startAt).toLocaleString()} · {e.location}
+                  </div>
                   <div className="mt-2 text-xs text-zinc-500">{e.ratings.length} rating(s)</div>
                 </div>
               ))
@@ -137,11 +163,15 @@ export default function ProfilePage() {
                 return (
                   <div key={e.id} className="rounded-2xl border border-zinc-200 p-4">
                     <div className="text-sm font-semibold">{e.title}</div>
-                    <div className="mt-1 text-xs text-zinc-500">{new Date(e.startAt).toLocaleString()} · {e.location}</div>
+                    <div className="mt-1 text-xs text-zinc-500">
+                      {new Date(e.startAt).toLocaleString()} · {e.location}
+                    </div>
                     {your ? (
                       <div className="mt-2 flex items-center justify-between">
                         <Stars value={your.stars} />
-                        <div className="text-xs text-zinc-500">vibe {your.vibe} · safety {your.safety}</div>
+                        <div className="text-xs text-zinc-500">
+                          vibe {your.vibe} · safety {your.safety}
+                        </div>
                       </div>
                     ) : null}
                   </div>
